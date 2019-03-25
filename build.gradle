@@ -1,10 +1,8 @@
+
 plugins {
-    id "java-library"
-    id "org.openmicroscopy.api" version "5.5.0-m4"
-    id "org.openmicroscopy.dsl" version "5.5.0-m4"
-    id "org.openmicroscopy.blitz" version "5.5.0-m4"
+    id 'java-library'
     id "org.openmicroscopy.project" version "5.5.0-m4"
-    id "org.openmicroscopy.gradle.ice-builder.slice" version "1.5.0-m4"
+    id "org.openmicroscopy.dsl" version "5.5.0-m4"
 }
 
 group = "org.openmicroscopy"
@@ -12,149 +10,18 @@ version = "5.5.0-SNAPSHOT"
 
 repositories {
     mavenLocal()
+    mavenCentral()
     jcenter()
 }
 
-java {
-    sourceCompatibility = JavaVersion.VERSION_1_8
-    targetCompatibility = JavaVersion.VERSION_1_8
-}
-
-ext {
-    pythonOutputDir = "$buildDir/toArchive/python"
-    generatedDir = "${blitz.outputDir.get()}"
-    generatedSliceDir = "${generatedDir}/slice"
-}
-
 dependencies {
-    testImplementation("junit:junit:4.12")
-
-    api("org.openmicroscopy:omero-server:5.5.0-m4")
-
-    implementation("com.sun.activation:javax.activation:1.2.0")
-    implementation("org.ini4j:ini4j:0.4.1")
-    implementation("commons-beanutils:commons-beanutils:1.9.3")
-    implementation("org.apache.xmlgraphics:batik-all:1.9.1")
-    implementation("org.apache.httpcomponents:httpclient:4.5.6")
-    implementation("org.apache.httpcomponents:httpmime:4.5.6")
-    implementation("gnu.getopt:java-getopt:1.0.13")
-    implementation("net.sf.ehcache:ehcache:2.10.6")
+    implementation 'org.openmicroscopy:omero-blitz:5.5.0-SNAPSHOT'
+    implementation 'org.openmicroscopy:omero-common:5.5.0-m4'
+    implementation 'org.openmicroscopy:omero-model:5.5.0-m4'
+    implementation "commons-beanutils:commons-beanutils:1.9.3"
+    implementation "com.zeroc:icegrid:3.6.4"
+    implementation "commons-lang:commons-lang:2.5"
+    implementation "commons-collections:commons-collections:3.2"
+    testCompile "org.testng:testng:6.9.8"
 }
 
-if (slice.iceVersion.contains("3.7")) {
-    slice.output = file("$generatedDir/ice37")
-    dependencies {
-        implementation "com.zeroc:icegrid:3.7.2"
-        implementation "com.zeroc:icestorm:3.7.2"
-    }
-    sourceSets.main.java {
-        srcDirs "src/main/ice37", slice.output
-    }
-} else if (slice.iceVersion.contains("3.6")) {
-    slice.output = file("${generatedDir}/ice36")
-    dependencies {
-        implementation "com.zeroc:icegrid:3.6.4"
-        implementation "com.zeroc:icestorm:3.6.4"
-    }
-    sourceSets.main.java {
-        srcDirs "src/main/ice36", slice.output
-    }
-}
-
-clean {
-    delete generatedDir
-}
-
-dsl {
-    database "psql"
-
-    singleFile {
-        iceMap {
-            template "java_ice_map.vm"
-            outputFile "java/omero/util/IceMap.java"
-        }
-
-        modelObjectFactoryRegistry {
-            template "java_obj_reg.vm"
-            outputFile "java/omero/util/ModelObjectFactoryRegistry.java"
-        }
-
-        objectFactoryRegistrar {
-            template "py_obj_reg.vm"
-            outputFile "$pythonOutputDir/omero/ObjectFactoryRegistrar.py"
-        }
-    }
-}
-
-api {
-    language {
-        java {
-            language "java"
-            outputDir "java/omero/model"
-        }
-
-        ice {
-            language "ice"
-            outputDir "slice/omero/model"
-            rename "\$1"
-        }
-
-        python {
-            language "python"
-            outputDir pythonOutputDir
-            rename "omero_model_\$1I"
-        }
-    }
-}
-
-task copySliceFiles(type: Copy, dependsOn: "generateIce") {
-    from "src/main/slice"
-    into "${generatedSliceDir}"
-}
-
-slice {
-    java {
-        include = [file("${generatedSliceDir}")]
-        files = fileTree(dir: file("${generatedSliceDir}"), include: "**/*.ice")
-        args = "--tie"
-    }
-}
-
-tasks.addRule("Pattern: pythonTask<ID>") { String taskName ->
-    if (taskName.startsWith("pythonTask")) {
-        def id = taskName.replace("pythonTask", "")
-        def camel = id.substring(0, 1).toLowerCase() + id.substring(1)
-        def dir = camel.replaceAll("([A-Z])", '/$1').toLowerCase()
-        def dirAsPrefix = dir.replace("/", "_") + "_"
-
-        task(taskName, type: com.zeroc.gradle.icebuilder.slice.PythonTask, dependsOn: "copySliceFiles") {
-            includeDirs = "${generatedSliceDir}"
-            inputFiles = fileTree(dir: "${generatedSliceDir}/${dir}", include: "**.ice")
-            outputDir = file("$pythonOutputDir")
-            prefix = dirAsPrefix
-        }
-    }
-}
-
-task pythonTaskGroup {
-    description "Runs all python tasks"
-    dependsOn = [
-            tasks."generatePython",
-            pythonTaskOmero,
-            pythonTaskOmeroModel,
-            pythonTaskOmeroCmd,
-            pythonTaskOmeroApi,
-    ]
-}
-
-// Need to ensure that the pythonTaskGroup output doesn't overwrite the output of generateObjectFactoryRegistrar
-tasks."generateObjectFactoryRegistrar${dsl.database.get().capitalize()}".mustRunAfter pythonTaskGroup
-
-// Set compileSlice to depend on the generation of ice files from "splitIce"
-compileSlice.dependsOn "copySliceFiles"
-
-// Set compileJava to additionally depend on "splitJava"
-compileJava.dependsOn "generateJava"
-
-// Add publish functionality
-apply from: "publish.gradle"
