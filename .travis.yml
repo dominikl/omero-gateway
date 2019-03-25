@@ -1,0 +1,27 @@
+language: java
+
+virtualenv:
+  system_site_packages: true
+
+before_cache:
+  - rm -f  $HOME/.gradle/caches/modules-2/modules-2.lock
+  - rm -fr $HOME/.gradle/caches/*/plugin-resolution/
+
+cache:
+  directories:
+    - $HOME/.gradle/caches/
+    - $HOME/.gradle/wrapper/
+
+before_install:
+  - sudo apt-key adv --keyserver keyserver.ubuntu.com --recv 5E6DA83306132997
+  - sudo apt-add-repository "deb http://zeroc.com/download/apt/ubuntu14.04 stable main"
+  - sudo apt-get update -q
+  - sudo apt-get install libzeroc-ice-java -y
+  - sudo pip install https://github.com/ome/zeroc-ice-py-ubuntu1404/releases/download/0.1.0/zeroc_ice-3.6.4-cp27-none-linux_x86_64.whl
+  - sudo ln -s /usr/local/bin/slice2py /usr/bin/slice2py
+
+install:
+  - DIR=$PWD; (cd /tmp; gradle wrapper --gradle-version=5.2.1; mv .gradle gradle gradlew $DIR)
+
+script:
+  - ./gradlew publishToMavenLocal -x test -x javadoc
